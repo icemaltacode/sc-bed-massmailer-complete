@@ -1,0 +1,182 @@
+<div class="d-flex justify-content-center">
+   <h1>Mailing Lists</h1>
+</div>
+<div class="d-flex justify-content-center">
+   <p class="lead">Create mailing lists here. You can then send mass email to these lists.
+   </p>
+</div>
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                Lists
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info" role="alert" id="listListAlert" style="display: none">    
+                </div>
+                <ul class="list-group list-group-flush" id="listList">
+                </ul>
+            </div>
+            <div class="card-footer">
+                <div class="alert alert-warning" role="alert" id="addListAlert" style="display: none">    
+                </div>
+                <form id="addListForm">
+                    <input type="text" class="form-control-sm" name="listName" placeholder="New list name" required>
+                    <button type="submit" class="btn btn-primary btn-sm">Add</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-8">
+        <div class="card">
+            <div class="card-header">
+                Addresses
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info" role="alert" id="listAddressesAlert" style="display: none">    
+                </div>
+                <form id="addAddressForm" style="display: none;">
+                    <div class="alert alert-warning" role="alert" id="listAddressesError" style="display: none">    
+                    </div>
+                    <input type="hidden" name="currentList" id="currentList">
+                    <input type="email" class="form-control-sm" name="newAddress" placeholder="email@address.com" required>
+                    <button type="submit" class="btn btn-primary btn-sm">Add</button>
+                </form>
+                <ul class="list-group list-group-flush" id="listAddressList">
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#section 'scripts'}}
+<script>
+    document.addEventListener('DOMContentLoaded', fetchLists, false);
+    document.getElementById('addListForm').addEventListener('submit', evt => addList(evt));
+    document.getElementById('addAddressForm').addEventListener('submit', evt => addListAddress(evt));
+
+    function addList(evt) {
+        evt.preventDefault();
+        document.getElementById('addListAlert').style.display = 'none';
+
+        const form = evt.target;
+        const body = JSON.stringify({ listName: form.elements.listName.value });
+        const headers = { 'Content-Type': 'application/json' };
+        fetch('/list', { method: 'post', body, headers })
+        .then(resp => {
+          if (resp.status === 409) {
+            document.getElementById('addListAlert').innerHTML = "A list with that name already exists.";
+            document.getElementById('addListAlert').style.display = 'block';
+            return;
+          }
+          if(resp.status < 200 || resp.status >= 300)
+            console.log('Something happened, and its bad');
+            return;
+        })
+        .then(json => {
+          form.elements.listName.value = '';  
+          fetchLists();
+        })
+        .catch(err => {
+          console.log('Something happened, and its REALLY bad');
+          console.log(err.message);
+        });
+    }
+
+    function fetchLists() {
+        fetch('/list')
+            .then(resp => {
+                if (resp.status === 404) {
+                    document.getElementById('listListAlert').innerHTML = "You have no lists yet.";
+                    document.getElementById('listListAlert').style.display = 'block';
+                    throw new Error(`Request failed with status ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(result => {
+                document.getElementById('listListAlert').style.display = 'none';
+                const listList = document.getElementById('listList');
+                while (listList.firstChild) {
+                    listList.removeChild(listList.firstChild);
+                }
+
+                for (list of result) {
+                    const li = document.createElement('li');
+                    li.appendChild(document.createTextNode(list.name));
+                    li.setAttribute('class', 'list-group-item');
+                    li.setAttribute('role', 'button');
+                    li.setAttribute('onclick', `fetchListAddresses('${list.name}')`)
+                    li.dataset.listName = list.name;
+                    listList.appendChild(li);
+                }
+
+                document.getElementById('addAddressForm').style.display = 'none';
+            })
+            .catch(err => console.log(err));
+    }
+
+    function fetchListAddresses(listName) {
+        document.querySelector(`[data-list-name="${listName}"]`).classList.add('active');
+        document.querySelectorAll(`li[data-list-name]:not([data-list-name="${listName}"])`).forEach(element => {
+            element.classList.remove('active');
+        });
+
+        document.getElementById('currentList').value = listName;
+        document.getElementById('addAddressForm').style.display = 'block';
+
+        fetch(`/list/${listName}`)
+            .then(resp => {
+                if (resp.status === 404) {
+                    document.getElementById('listAddressesAlert').innerHTML = "This list is currently empty.";
+                    document.getElementById('listAddressesAlert').style.display = 'block';
+                    throw new Error(`Request failed with status ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(result => {
+                document.getElementById('listAddressesAlert').style.display = 'none';
+                const listAddressList = document.getElementById('listAddressList');
+                while (listAddressList.firstChild) {
+                    listAddressList.removeChild(listAddressList.firstChild);
+                }
+
+                for (address of result) {
+                    const li = document.createElement('li');
+                    li.appendChild(document.createTextNode(address));
+                    li.setAttribute('class', 'list-group-item');
+                    listAddressList.appendChild(li);
+                }
+            })
+            .catch(err => console.log(err));
+    }
+
+    function addListAddress(evt) {
+        evt.preventDefault();
+        document.getElementById('listAddressesError').style.display = 'none';
+        const listName = document.getElementById('currentList').value;
+
+        const form = evt.target;
+        const body = JSON.stringify({ newAddress: form.elements.newAddress.value });
+        const headers = { 'Content-Type': 'application/json' };
+        fetch(`/list/${listName}`, { method: 'put', body, headers })
+        .then(resp => {
+          if (resp.status === 409) {
+            document.getElementById('listAddressesError').innerHTML = "That address is already in the list.";
+            document.getElementById('listAddressesError').style.display = 'block';
+            return;
+          }
+          if(resp.status < 200 || resp.status >= 300)
+            console.log('Something happened, and its bad');
+            return;
+        })
+        .then(json => {
+          form.elements.newAddress.value = '';  
+          fetchListAddresses(listName);
+        })
+        .catch(err => {
+          console.log('Something happened, and its REALLY bad');
+          console.log(err.message);
+        });        
+    }
+</script>
+{{/section}}

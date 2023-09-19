@@ -1,0 +1,173 @@
+<div class="d-flex justify-content-center">
+   <h1>Messages</h1>
+</div>
+<div class="d-flex justify-content-center">
+   <p class="lead">Create messages here. These messages can be sent to your lists.
+   </p>
+</div>
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                Messages
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info" role="alert" id="messageListAlert" style="display: none">    
+                </div>
+                <ul class="list-group list-group-flush" id="messageList">
+                </ul>
+            </div>
+            <div class="card-footer">
+                <div class="alert alert-warning" role="alert" id="addMessageAlert" style="display: none">    
+                </div>
+                <form id="addMessageForm">
+                    <input type="text" class="form-control-sm" name="messageName" placeholder="New message name" required>
+                    <button type="submit" class="btn btn-primary btn-sm">Add</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-8">
+        <div class="card">
+            <div class="card-header">
+                Message Content
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info" role="alert" id="messageContentAlert" style="display: none">    
+                </div>
+                <form id="addContentForm" style="display: none;">
+                    <div class="alert alert-warning" role="alert" id="messageContentError" style="display: none">    
+                    </div>
+                    <div class="card" style="margin-bottom: 20px;">
+                        <div class="card-body">
+                            Basic replacements are supported. Use <span class="font-monospace">__email__</span> as a placeholder for recipient's email address.
+                        </div>
+                    </div>
+                    <input type="hidden" name="currentMessage" id="currentMessage">
+                    <div style="color-scheme: light !important;">
+                        <div style="min-height: 400px;" id="content" data-tiny-editor></div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#section 'scripts'}}
+<script>
+    document.addEventListener('DOMContentLoaded', fetchMessages, false);
+    document.getElementById('addMessageForm').addEventListener('submit', evt => addMessage(evt));
+    document.getElementById('addContentForm').addEventListener('submit', evt => updateMessageContent(evt));
+
+    function addMessage(evt) {
+        evt.preventDefault();
+        document.getElementById('addMessageAlert').style.display = 'none';
+
+        const form = evt.target;
+        const body = JSON.stringify({ messageName: form.elements.messageName.value });
+        const headers = { 'Content-Type': 'application/json' };
+        fetch('/message', { method: 'post', body, headers })
+        .then(resp => {
+          if (resp.status === 409) {
+            document.getElementById('addMessageAlert').innerHTML = "A message with that name already exists.";
+            document.getElementById('addMessageAlert').style.display = 'block';
+            return;
+          }
+          if(resp.status < 200 || resp.status >= 300)
+            console.log('Something happened, and its bad');
+            return;
+        })
+        .then(json => {
+          form.elements.messageName.value = '';  
+          fetchMessages();
+        })
+        .catch(err => {
+          console.log('Something happened, and its REALLY bad');
+          console.log(err.message);
+        });
+    }
+
+    function fetchMessages() {
+        fetch('/message')
+            .then(resp => {
+                if (resp.status === 404) {
+                    document.getElementById('messageListAlert').innerHTML = "You have no messages yet.";
+                    document.getElementById('messageListAlert').style.display = 'block';
+                    throw new Error(`Request failed with status ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(result => {
+                document.getElementById('messageListAlert').style.display = 'none';
+                const messageList = document.getElementById('messageList');
+                while (messageList.firstChild) {
+                    messageList.removeChild(messageList.firstChild);
+                }
+
+                for (message of result) {
+                    const li = document.createElement('li');
+                    li.appendChild(document.createTextNode(message.name));
+                    li.setAttribute('class', 'list-group-item');
+                    li.setAttribute('role', 'button');
+                    li.setAttribute('onclick', `fetchMessageContent('${message.name}')`)
+                    li.dataset.messageName = message.name;
+                    messageList.appendChild(li);
+                }
+
+                document.getElementById('addContentForm').style.display = 'none';
+            })
+            .catch(err => console.log(err));
+    }
+
+    function fetchMessageContent(messageName) {
+        document.querySelector(`[data-message-name="${messageName}"]`).classList.add('active');
+        document.querySelectorAll(`li[data-message-name]:not([data-message-name="${messageName}"])`).forEach(element => {
+            element.classList.remove('active');
+        });
+
+        document.getElementById('currentMessage').value = messageName;
+        document.getElementById('addContentForm').style.display = 'block';
+
+        fetch(`/message/${messageName}`)
+            .then(resp => {
+                return resp.json();
+            })
+            .then(result => {
+                if (result === '') {
+                    document.getElementById('messageContentAlert').innerHTML = "This message is currently empty.";
+                    document.getElementById('messageContentAlert').style.display = 'block';
+                } else {
+                    document.getElementById('messageContentAlert').style.display = 'none';
+                }
+                document.getElementById('content').innerHTML = result;
+            })
+            .catch(err => console.log(err));
+    }
+
+    function updateMessageContent(evt) {
+        evt.preventDefault();
+        document.getElementById('messageContentError').style.display = 'none';
+        const messageName = document.getElementById('currentMessage').value;
+        const messageContent = document.getElementById('content').innerHTML;
+
+        const form = evt.target;
+        const body = JSON.stringify({ content: messageContent });
+        const headers = { 'Content-Type': 'application/json' };
+        fetch(`/message/${messageName}`, { method: 'put', body, headers })
+        .then(resp => {
+          if(resp.status < 200 || resp.status >= 300) {
+            console.log('Something happened, and its bad');
+            return;
+          }
+        })
+        .then(json => {
+          fetchMessageContent(messageName);
+        })
+        .catch(err => {
+          console.log('Something happened, and its REALLY bad');
+          console.log(err.message);
+        });        
+    }
+</script>
+{{/section}}

@@ -1,0 +1,195 @@
+<div class="d-flex justify-content-center">
+   <h1>Send Message</h1>
+</div>
+<div class="d-flex justify-content-center">
+   <p class="lead">Send your messages here. Remember to include an unsubscribe link!
+   </p>
+</div>
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                Message
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger" role="alert" id="missingAlert" style="display: none">    
+                </div>
+                <select id="listSelect" class="form-select form-select-lg mb-3" aria-label="Choose recipient list">
+                    <option selected>Choose a list</option>
+                </select>
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-body" id="listAddresses">
+                        Choose a list to see addresses.
+                    </div>
+                </div>
+                <select id="messageSelect" class="form-select form-select-lg mb-3" aria-label="Choose message list">
+                    <option selected>Choose a message</option>
+                </select>
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-body" id="messageContent">
+                        Choose a message to see content.
+                    </div>
+                </div>
+                <button id="sendButton" type="button" class="btn btn-primary">Send It</button>
+                <div class="alert alert-warning" role="alert" id="successAlert" style="display: none; margin-top: 10px;">    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#section 'scripts'}}
+<script>
+    let validList = false;
+    let validMessage = false;
+
+    document.addEventListener('DOMContentLoaded', fetchLists, false);
+    document.addEventListener('DOMContentLoaded', fetchMessages, false);
+    document.getElementById('listSelect').addEventListener('change', fetchListAddresses, false);
+    document.getElementById('messageSelect').addEventListener('change', fetchMessageContent, false);
+    document.getElementById('sendButton').addEventListener('click', sendMessage, false);
+    
+
+    function fetchLists() {
+        fetch('/list')
+            .then(resp => {
+                if (resp.status === 404) {
+                    document.getElementById('missingAlert').innerHTML = "You have no lists yet.";
+                    document.getElementById('missingAlert').style.display = 'block';
+                    throw new Error(`Request failed with status ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(result => {
+                document.getElementById('missingAlert').style.display = 'none';
+                const listSelect = document.getElementById('listSelect');
+
+                for (list of result) {
+                    var opt = document.createElement('option');
+                    opt.value = list.name;
+                    opt.innerHTML = list.name;
+                    listSelect.appendChild(opt);
+                }
+            })
+            .catch(err => console.log(err));
+    }
+
+    function fetchListAddresses() {
+        const listName = document.getElementById('listSelect').value;
+
+        fetch(`/list/${listName}`)
+            .then(resp => {
+                if (resp.status === 404) {
+                    document.getElementById('missingAlert').innerHTML = "This list is currently empty.";
+                    document.getElementById('missingAlert').style.display = 'block';
+                    validList = false;
+                    throw new Error(`Request failed with status ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(result => {
+                document.getElementById('missingAlert').style.display = 'none';
+                const listAddresses = document.getElementById('listAddresses');
+                let addressHtml = '';
+
+                for (address of result) {
+                    addressHtml += `<span class="badge rounded-pill text-bg-info">${address}</span>&nbsp;`;
+                }
+                listAddresses.innerHTML = addressHtml;
+                validList = true;
+            })
+            .catch(err => console.log(err));
+    }
+
+    function fetchMessages() {
+        fetch('/message')
+            .then(resp => {
+                if (resp.status === 404) {
+                    document.getElementById('missingAlert').innerHTML = "You have no messages yet.";
+                    document.getElementById('missingAlert').style.display = 'block';
+                    throw new Error(`Request failed with status ${resp.status}`);
+                }
+                return resp.json();
+            })
+            .then(result => {
+                document.getElementById('missingAlert').style.display = 'none';
+                const messageSelect = document.getElementById('messageSelect');
+               
+               for (message of result) {
+                    var opt = document.createElement('option');
+                    opt.value = message.name;
+                    opt.innerHTML = message.name;
+                    messageSelect.appendChild(opt);
+                }
+            })
+            .catch(err => console.log(err));
+    }
+
+    function fetchMessageContent() {
+        const messageName = document.getElementById('messageSelect').value;
+
+        fetch(`/message/${messageName}`)
+            .then(resp => {
+                return resp.json();
+            })
+            .then(result => {
+                if (result === '') {
+                    document.getElementById('missingAlert').innerHTML = "This message is currently empty.";
+                    document.getElementById('missingAlert').style.display = 'block';
+                    validMessage = false;
+                    throw new Error(`Request failed with status ${resp.status}`);
+                }
+
+                document.getElementById('missingAlert').style.display = 'none';
+                let messageContent = document.getElementById('messageContent');
+                messageContent.innerHTML = result;
+                validMessage = true;
+            })
+            .catch(err => console.log(err));
+    }
+
+    function sendMessage() {
+        let error = '';
+        if (!validList) {
+            error += 'Please select a valid list before sending.';
+        }
+        if (!validMessage) {
+            error += 'Please select a valid message before sending.';
+        }
+
+        if (validList && validMessage) {
+            document.getElementById('missingAlert').style.display = 'none';
+            const body = JSON.stringify({
+                listName: document.getElementById('listSelect').value,
+                messageName: document.getElementById('messageSelect').value,
+            });
+            const headers = { 'Content-Type': 'application/json' };
+            
+            document.getElementById('successAlert').classList.remove('alert-success');
+            document.getElementById('successAlert').classList.add('alert-warning');
+            document.getElementById('successAlert').innerHTML = `Sending messages...`;
+            document.getElementById('successAlert').style.display = 'block';
+            fetch('/send', { method: 'post', body, headers })
+                .then(resp => {
+                    if(resp.status < 200 || resp.status >= 300)
+                        throw new Error(`Request failed with status ${resp.status}`)
+                    return resp.json()
+                })
+                .then(json => {
+                    document.getElementById('successAlert').classList.remove('alert-warning');
+                    document.getElementById('successAlert').classList.add('alert-success');
+                    document.getElementById('successAlert').innerHTML = `Messages sent successfully!`;
+                    document.getElementById('successAlert').style.display = 'block';
+                })
+                .catch(err => {
+                    console.log(err);
+                    document.getElementById('missingAlert').innerHTML = `Message failed to send: ${err.message}`;
+                    document.getElementById('missingAlert').style.display = 'block';
+                });   
+        } else {
+            document.getElementById('missingAlert').innerHTML = error;
+            document.getElementById('missingAlert').style.display = 'block';
+        }
+    }
+</script>
+{{/section}}
