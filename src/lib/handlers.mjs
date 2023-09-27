@@ -35,7 +35,7 @@ export function login(req, res) {
             res.cookie('user_login', req.body.email, {maxAge: 30 * 24 * 60 * 60 * 1000});
         }
 
-        if (redirect) {
+        if (redirect && redirect !== '/') {
             res.render(redirect);
         } else {
             res.render('home');
